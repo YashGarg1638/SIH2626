@@ -1,0 +1,283 @@
+import { useEffect, useRef, useState } from 'react';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import clsx from 'clsx';
+import {
+  ArrowRight, BarChart3, Bell, Building2, FilePlus2, FolderKanban, GitMerge, LayoutGrid, LogOut, Menu, Monitor, Moon, Search, ShieldCheck, Sun, X,
+} from 'lucide-react';
+import { api, DEMO, qs } from '../lib/api';
+import { useAuth, useLive, useLookups, useTheme, useToast } from '../lib/context';
+import { relTime } from '../lib/format';
+import type { Alert, OverlapGroup } from '../lib/types';
+import { BureauChip, StatusBadge, severityIcon } from './ui';
+
+export function LogoMark({ className }: { className?: string }) {
+  return (
+    <span className={clsx('flex size-9 shrink-0 items-center justify-center rounded-full bg-accent text-accent-ink', className)}>
+      <svg viewBox="0 0 32 32" className="size-5" aria-hidden><path d="M7 23V9h4.4L16 17l4.6-8H25v14h-3.8v-7.4L17.2 22h-2.4l-4-6.4V23z" fill="currentColor" /></svg>
+    </span>
+  );
+}
+
+const initials = (name?: string) => (name ?? '').replace(/^(Prof\.|Dr\.)\s*/, '').split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+
+export default function Layout() {
+  const { user } = useAuth();
+  const [drawer, setDrawer] = useState(false);
+  const loc = useLocation();
+  useEffect(() => { setDrawer(false); document.getElementById('main-scroll')?.scrollTo({ top: 0 }); }, [loc.pathname]);
+  const { data: alertSummary } = useQuery({ queryKey: ['alerts-summary'], queryFn: () => api<{ unread: number; critical: number; latest: Alert[] }>('/alerts/summary'), refetchInterval: 60000 });
+  const { data: overlaps } = useQuery({ queryKey: ['overlaps', 'open-count'], queryFn: () => api<OverlapGroup[]>('/overlaps?status=open') });
+  const { data: activeCount } = useQuery({ queryKey: ['cases', 'active-count'], queryFn: () => api<{ total: number }>('/cases?active=1&size=5').then((r) => r.total) });
+
+  const items: NavLeaf[] = [
+    { to: '/', label: 'Dashboard', icon: LayoutGrid, end: true },
+    { to: '/cases', label: 'All cases', icon: FolderKanban, end: true, badge: activeCount },
+    { to: '/cases/new', label: 'Register complaint', icon: FilePlus2 },
+    { to: '/overlaps', label: 'Overlaps', icon: GitMerge, badge: overlaps?.length },
+    { to: '/alerts', label: 'Alerts', icon: Bell, badge: alertSummary?.unread },
+    { to: '/institutions', label: 'Institutions', icon: Building2 },
+    { to: '/reports', label: 'Reports', icon: BarChart3 },
+    ...(user?.role === 'admin' ? [{ to: '/admin', label: 'Administration', icon: ShieldCheck }] : []),
+  ];
+
+  return (
+    <div className="min-h-screen bg-main lg:bg-transparent lg:p-5 xl:p-7">
+      <div id="app-shell" className="lg:flex lg:h-[calc(100vh-40px)] lg:overflow-hidden lg:rounded-[12px] lg:border lg:border-white/10 lg:bg-sidebar lg:shadow-[var(--shell-shadow)] xl:h-[calc(100vh-56px)]">
+        <aside className="no-print hidden w-[240px] shrink-0 border-r border-hairline lg:block"><Sidebar items={items} /></aside>
+        {drawer && (
+          <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal>
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setDrawer(false)} />
+            <div className="absolute inset-y-0 left-0 w-[272px] bg-sidebar shadow-2xl border-r border-white/10"><Sidebar items={items} mobile onClose={() => setDrawer(false)} /></div>
+          </div>
+        )}
+        <div id="main-scroll" className="relative flex min-h-screen min-w-0 flex-1 flex-col bg-main lg:min-h-0 lg:overflow-y-auto lg:rounded-r-[12px]">
+          <header className="header-fade no-print sticky top-0 isolate z-30 px-4 pb-2 pt-4 sm:px-7 sm:pt-5 border-b border-white/[0.04] bg-main/80 backdrop-blur-md">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <button className={clsx(iconBtn, 'lg:hidden')} onClick={() => setDrawer(true)} aria-label="Open menu"><Menu className="size-5" /></button>
+              <LiveIndicator />
+              <GlobalSearch />
+              <div className="ml-auto flex items-center gap-2">
+                <ThemeToggle />
+                <AlertBell summary={alertSummary} />
+                <UserMenu />
+              </div>
+            </div>
+          </header>
+          <main className="print-full w-full flex-1 px-4 pb-10 pt-4 sm:px-7">
+            <Outlet />
+          </main>
+          <footer className="no-print px-6 pb-5 text-center text-[11px] text-muted">
+            {DEMO ? 'Live demo running in your browser · ' : 'Demo build · '}synthetic data: all institutions, officials and complaints are fictional · SIH 2026 · SIH26264 · brAin--byte
+          </footer>
+        </div>
+      </div>
+      <Toasts />
+    </div>
+  );
+}
+
+type NavLeaf = { to: string; label: string; icon?: typeof LayoutGrid; end?: boolean; badge?: number };
+/** Minimal text sidebar: stacked wordmark, spaced-capital links, a short line marks the current page. */
+function Sidebar({ items, mobile, onClose }: { items: NavLeaf[]; mobile?: boolean; onClose?: () => void }) {
+  return (
+    <div className="flex h-full flex-col px-6 pb-6 pt-7">
+      <div className="flex items-start justify-between">
+        <Link to="/" className="group flex items-center gap-2.5" aria-label="AICTE ICMS home">
+          <div className="flex size-9 items-center justify-center rounded-lg bg-gradient-to-br from-white/15 to-white/5 font-mono text-sm font-bold text-white shadow-md ring-1 ring-white/15 transition-all group-hover:ring-white/30">
+            β
+          </div>
+          <div>
+            <div className="text-[13px] font-bold tracking-[0.16em] text-white">brAin--byte</div>
+            <div className="text-[9px] font-medium tracking-[0.2em] text-ink-3">AICTE · ICMS</div>
+          </div>
+        </Link>
+        {mobile && <button className={iconBtn} onClick={onClose} aria-label="Close menu"><X className="size-5" /></button>}
+      </div>
+      <nav aria-label="Main" className="mt-8 flex-1 space-y-1 overflow-y-auto pb-4">
+        {items.map((n) => (
+          <NavLink key={n.to} to={n.to} end={n.end}
+            className={({ isActive }) => clsx('group flex items-center gap-3 rounded-lg px-2.5 py-2 text-[11px] font-medium uppercase tracking-[0.18em] transition-all',
+              isActive ? 'bg-white/[0.06] text-white font-semibold' : 'text-ink-3 hover:bg-white/[0.03] hover:text-white')}>
+            {({ isActive }) => (<>
+              <span className={clsx('h-1.5 rounded-full transition-all', isActive ? 'w-1.5 bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]' : 'w-1 bg-white/20 group-hover:bg-white/40')} />
+              <span className="flex-1">{n.label}</span>
+              {!!n.badge && <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[9.5px] tracking-normal text-white tnum">{n.badge > 999 ? '999+' : n.badge}</span>}
+            </>)}
+          </NavLink>
+        ))}
+      </nav>
+      <div className="space-y-4">
+        <Link to="/cases/new" className="btn-raised flex items-center justify-between rounded-[6px] px-4 py-3 text-[10.5px] font-medium uppercase tracking-[0.18em]">
+          New complaint <ArrowRight className="size-3.5" />
+        </Link>
+        <div className="eyebrow text-[9.5px] text-muted">.SIH26264 · brAin--byte</div>
+      </div>
+    </div>
+  );
+}
+
+function LiveIndicator() {
+  const { connected, lastAt, simulator } = useLive();
+  return (
+    <div className="eyebrow hidden shrink-0 items-center gap-2 text-ink-2 md:flex" title={connected ? 'Receiving real-time updates' : 'Reconnecting…'}>
+      <span className={clsx('size-1.5 rounded-full', connected ? 'live-dot bg-good' : 'bg-muted')} />
+      {connected ? 'Live' : 'Offline'}
+      {lastAt && <span className="normal-case tracking-normal text-ink-3">· {relTime(lastAt)}</span>}
+      {simulator && <span className="text-ink-3">· demo feed</span>}
+    </div>
+  );
+}
+
+const iconBtn = 'relative flex size-10 items-center justify-center rounded-full text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink';
+
+function ThemeToggle() {
+  const { theme, setTheme } = useTheme();
+  const next = theme === 'dark' ? 'light' : theme === 'light' ? 'system' : 'dark';
+  const Icon = theme === 'light' ? Sun : theme === 'dark' ? Moon : Monitor;
+  return <button className={clsx(iconBtn, 'hidden sm:flex')} onClick={() => setTheme(next)} title={`Theme: ${theme} (click for ${next})`} aria-label="Toggle theme"><Icon className="size-[18px]" /></button>;
+}
+
+function usePopover() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const h = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const k = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('mousedown', h);
+    document.addEventListener('keydown', k);
+    return () => { document.removeEventListener('mousedown', h); document.removeEventListener('keydown', k); };
+  }, []);
+  return { open, setOpen, ref };
+}
+
+function AlertBell({ summary }: { summary?: { unread: number; critical: number; latest: Alert[] } }) {
+  const { open, setOpen, ref } = usePopover();
+  const nav = useNavigate();
+  return (
+    <div className="relative" ref={ref}>
+      <button className={iconBtn} onClick={() => setOpen((o) => !o)} aria-label="Alerts" aria-expanded={open}>
+        <Bell className="size-[18px]" />
+        {!!summary?.unread && <span className={clsx('absolute right-1 top-1 min-w-[17px] rounded-full px-1 text-center text-[10px] font-bold leading-[17px] text-white', summary.critical ? 'bg-critical' : 'bg-sun')}>{summary.unread > 99 ? '99+' : summary.unread}</span>}
+      </button>
+      {open && (
+        <div className="glass-pop absolute right-0 top-12 z-40 w-[min(92vw,380px)] overflow-hidden rounded-[10px]">
+          <div className="flex items-center justify-between px-4 py-3 text-sm font-semibold">Alerts <span className="text-xs font-normal text-ink-3">{summary?.unread ?? 0} unread</span></div>
+          <ul className="max-h-96 space-y-1 overflow-y-auto px-2 pb-2">
+            {summary?.latest.map((a) => (
+              <li key={a.id}>
+                <button className={clsx('flex w-full gap-2.5 rounded-lg px-3 py-2.5 text-left hover:bg-surface-2', !a.read && 'bg-surface-1')}
+                  onClick={() => { setOpen(false); api(`/alerts/${a.id}/read`, { method: 'POST' }).catch(() => {}); nav(a.type === 'OVERLAP' ? `/institutions/${a.institution_id}` : a.case_id ? `/cases/${a.case_id}` : '/alerts'); }}>
+                  <span className={clsx('mt-0.5', a.severity === 'critical' ? 'text-critical-text' : a.severity === 'serious' ? 'text-serious-text' : a.severity === 'warning' ? 'text-warning-text' : 'text-info-text')}>{severityIcon(a.severity)}</span>
+                  <span className="min-w-0">
+                    <span className="line-clamp-2 text-sm text-ink">{a.title}</span>
+                    <span className="text-xs text-ink-3">{relTime(a.created_at)}</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+            {!summary?.latest.length && <li className="px-4 py-6 text-center text-sm text-ink-3">No active alerts</li>}
+          </ul>
+          <Link to="/alerts" onClick={() => setOpen(false)} className="block border-t border-hairline px-4 py-3 text-center text-sm font-semibold text-accent-text hover:bg-surface-2">View all alerts</Link>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function UserMenu() {
+  const { user, logout } = useAuth();
+  const { bureauName, regionName } = useLookups();
+  const { open, setOpen, ref } = usePopover();
+  const scope = user?.role === 'admin' ? 'All Bureaus/Cells' : user?.role === 'regional' ? regionName(user.region_code) : bureauName(user?.bureau_code);
+  return (
+    <div className="relative" ref={ref}>
+      <button onClick={() => setOpen((o) => !o)} aria-label="Account" aria-expanded={open}
+        className="ml-1 flex size-9 items-center justify-center rounded-full bg-lavender text-xs font-semibold tracking-wider text-lavender-ink shadow-[0_8px_20px_-8px_rgba(0,0,0,0.8)]">
+        {initials(user?.name)}
+      </button>
+      {open && (
+        <div className="glass-pop absolute right-0 top-12 z-40 w-72 rounded-[10px] p-4">
+          <div className="flex items-center gap-3">
+            <span className="flex size-11 items-center justify-center rounded-full bg-lavender font-semibold text-lavender-ink">{initials(user?.name)}</span>
+            <div className="min-w-0">
+              <div className="truncate font-semibold">{user?.name}</div>
+              <div className="truncate text-xs text-ink-3">{user?.designation}</div>
+            </div>
+          </div>
+          <div className="tile mt-3 rounded-lg px-3 py-2 text-xs text-ink-2">Scope: {scope}</div>
+          <button onClick={logout} className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-surface-2 px-3 py-2 text-sm font-medium hover:bg-surface-3"><LogOut className="size-4" />Sign out</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GlobalSearch() {
+  const [q, setQ] = useState('');
+  const [open, setOpen] = useState(false);
+  const [debounced, setDebounced] = useState('');
+  const nav = useNavigate();
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => { const t = setTimeout(() => setDebounced(q.trim()), 200); return () => clearTimeout(t); }, [q]);
+  useEffect(() => {
+    const h = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+  const { data } = useQuery({
+    queryKey: ['search', debounced], enabled: debounced.length >= 2,
+    queryFn: () => api<{ cases: Array<{ id: number; case_no: string; subject: string; status: string; bureau_code: string; institution_name: string | null }>; institutions: Array<{ id: number; name: string; aicte_id: string; city: string; state: string; score: number; fuzzy?: boolean }> }>(`/search${qs({ q: debounced })}`),
+  });
+  const go = (path: string) => { setOpen(false); setQ(''); nav(path); };
+  return (
+    <div className="relative min-w-0 flex-1 sm:max-w-xl md:mx-auto" ref={ref}>
+      <Search className="pointer-events-none absolute left-0.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-3" strokeWidth={2} />
+      <input value={q} onChange={(e) => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)}
+        onKeyDown={(e) => { if (e.key === 'Enter' && q.trim()) go(`/cases${qs({ q: q.trim() })}`); if (e.key === 'Escape') setOpen(false); }}
+        placeholder="Search Case ID, institution, AICTE ID…" aria-label="Search"
+        id="global-search" className="h-10 w-full rounded-none border-0 border-b border-[var(--axis)] bg-transparent pl-7 pr-2 text-[13px] text-ink placeholder:text-ink-3 focus:border-ink focus:outline-none" />
+      {open && debounced.length >= 2 && data && (
+        <div className="glass-pop absolute left-0 right-0 top-12 z-40 overflow-hidden rounded-[10px] p-2">
+          {!!data.institutions.length && <div className="px-3 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted">Institutions</div>}
+          {data.institutions.map((i) => (
+            <button key={i.id} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-surface-2" onClick={() => go(`/institutions/${i.id}`)}>
+              <Building2 className="size-4 shrink-0 text-ink-3" />
+              <span className="min-w-0 flex-1"><span className="block truncate text-sm">{i.name}</span><span className="text-xs text-ink-3">{i.aicte_id} · {i.city}, {i.state}</span></span>
+              {i.fuzzy && <span className="shrink-0 text-xs text-ink-3" title="Fuzzy match">≈ {Math.round(i.score * 100)}%</span>}
+            </button>
+          ))}
+          {!!data.cases.length && <div className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted">Cases</div>}
+          {data.cases.map((c) => (
+            <button key={c.id} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-surface-2" onClick={() => go(`/cases/${c.id}`)}>
+              <FolderKanban className="size-4 shrink-0 text-ink-3" />
+              <span className="min-w-0 flex-1"><span className="block truncate text-sm">{c.case_no} — {c.subject}</span><span className="truncate text-xs text-ink-3">{c.institution_name ?? 'Unidentified institution'}</span></span>
+              <BureauChip code={c.bureau_code} /><StatusBadge status={c.status} />
+            </button>
+          ))}
+          <button className="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-accent-text hover:bg-surface-2" onClick={() => go(`/cases${qs({ q: debounced })}`)}>Search all cases for “{debounced}” ↵</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Toasts() {
+  const { toasts, dismiss } = useToast();
+  const nav = useNavigate();
+  return (
+    <div className="no-print pointer-events-none fixed bottom-5 right-4 z-50 flex w-[min(92vw,380px)] flex-col gap-2" aria-live="polite">
+      {toasts.map((t) => (
+        <div key={t.id} className={clsx('glass-pop pointer-events-auto rounded-[10px] p-3.5', t.tone === 'warning' && 'ring-1 ring-warning/60', t.tone === 'critical' && 'ring-1 ring-critical/60', t.tone === 'good' && 'ring-1 ring-good/50')}>
+          <div className="flex items-start gap-2">
+            <button className="min-w-0 flex-1 text-left" onClick={() => { if (t.href) nav(t.href); dismiss(t.id); }}>
+              <div className="text-sm font-semibold">{t.title}</div>
+              {t.body && <div className="mt-0.5 text-sm text-ink-2">{t.body}</div>}
+            </button>
+            <button className="rounded-full p-1 text-ink-3 hover:bg-surface-2" onClick={() => dismiss(t.id)} aria-label="Dismiss"><X className="size-4" /></button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
