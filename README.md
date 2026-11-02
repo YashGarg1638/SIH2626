@@ -1,14 +1,13 @@
 # AICTE ICMS — Integrated Complaint Monitoring Dashboard
 
+**Developed by: Yash**  
 **Smart India Hackathon 2026 · Problem Statement SIH26264 · AICTE / Regulation Bureau · Theme: Smart Automation**
 
 A single-window dashboard where authorised AICTE officials see every institution-related complaint across the Regulation Bureau (RB), the Public Grievance Redressal Cell (PGRC), other Bureaus/Cells and Regional Offices. It tracks each case through its lifecycle and **automatically detects when the same institution is being handled by more than one Bureau/Cell**, even when complainants spell the institution differently or quote no AICTE ID. When that happens it raises **"Potential Overlapping Cases – Coordination Required"**.
 
 The full problem statement is in [docs/PROBLEM_STATEMENT.md](docs/PROBLEM_STATEMENT.md). How each requirement is met is in [docs/REQUIREMENTS_MAP.md](docs/REQUIREMENTS_MAP.md).
 
-### Live demo: **https://shash1704.github.io/aicte-icms/**
-
-Click any demo account on the sign-in screen (password `Aicte@2026`). The demo is a static GitHub Pages site: the **same server code runs inside your browser** (SQLite compiled to WebAssembly via sql.js, plus a small Express-compatible router), so it needs no backend. The first visit takes a few seconds to generate the demo data; your changes are saved in your own browser only, and *Administration → Reset demo data* starts over. Live updates are per browser tab in this mode. The full multi-user server is described below. See [How the browser demo works](#how-the-browser-demo-works).
+Click any demo account on the sign-in screen (password `Aicte@2026`). The demo also supports a standalone in-browser mode: the **same server code runs inside your browser** (SQLite compiled to WebAssembly via sql.js, plus a small Express-compatible router), so it needs no backend. The first visit takes a few seconds to generate the demo data; your changes are saved in your own browser only, and *Administration → Reset demo data* starts over. Live updates are per browser tab in this mode. The full multi-user server is described below. See [How the browser demo works](#how-the-browser-demo-works).
 
 > **All data is synthetic.** No dataset came with the problem statement, so the app generates fictional institutions, officials and complaints (see [Demo data](#demo-data)).
 
